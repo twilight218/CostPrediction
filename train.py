@@ -1,14 +1,16 @@
 import json
-
+import os
 import model
 import pandas as pd
+import numpy as np
+from scipy.stats import pearsonr
 
 def train_and_save_model(fn, verbose=True):
     imdb_path = './data/imdb/'
     json_list = []
     total_cost = []
     #for i in range(20): 2
-    file = imdb_path + 'plan_and_cost/train_plan_part{}.csv'.format(3)
+    file = imdb_path + 'plan_and_cost/train_plan_part{}.csv'.format(0)
     df = pd.read_csv(file)
     json_column = df['json'].values.tolist()
     for plan_json in json_column:
@@ -21,6 +23,52 @@ def train_and_save_model(fn, verbose=True):
     reg.save(fn)
     return reg
 
+def print_Qerror(preds, labels):
+    qerror = []
+    for i in range(len(preds)):
+        if preds[i] > float(labels[i]):
+            qerror.append(preds[i] / float(labels[i]))
+        else:
+            qerror.append(float(labels[i]) / float(preds[i]))
+
+    e_50, e_90 = np.median(qerror), np.percentile(qerror, 90)
+    e_mean = np.mean(qerror)
+
+    print("Median: {}".format(e_50))
+    print("Mean: {}".format(e_mean))
+
+    res = {
+        'q_error_median': e_50,
+        'q_error_90': e_90,
+        'q_error_mean': e_mean,
+    }
+
+    return res
+
+
+def get_corr(ps, ls):
+    ps = np.array(ps)
+    ls = np.array(ls)
+    corr, _ = pearsonr(np.log(ps), np.log(ls))
+
+    return corr
+
+def evaluate(model, test_file_name, model_file_path):
+    if os.path.exists(model_file_path):
+        model.load(model_file_path)
+    imdb_path = "./data/imdb/"
+    df = pd.read_csv(imdb_path + test_file_name + '_plan.csv')
+    json_list = df['json'].values.tolist()
+    total_cost = []
+    for plan_json in json_list:
+        parse_json = json.loads(plan_json)
+        total_cost.append(parse_json['Plan']['Total Cost'])
+    pred_cost = model.predict(json_list).squeeze()
+    scores = print_Qerror(pred_cost, total_cost)
+    corr = get_corr(pred_cost, total_cost)
+    print(scores)
+    print('Corr: ', corr)
+
 
 
 if __name__ == "__main__":
@@ -28,7 +76,8 @@ if __name__ == "__main__":
     # print(json_value['Plan']['Total Cost'])
     #train_and_save_model("bao_model")
     model = model.BaoRegression()
-    model.load("bao_model")
+    if os.path.exists("bao_model"):
+        model.load("bao_model")
     imdb_path = "./data/imdb/"
     file = imdb_path + 'plan_and_cost/train_plan_part{}.csv'.format(0)
     df = pd.read_csv(file)
